@@ -30,7 +30,7 @@ A Flask-based API that uses Google's Gemini AI to extract information from busin
    python app.py
    ```
 
-The API will start on `http://localhost:6666`
+The API will start on `http://localhost:5001`
 
 ## API Endpoints
 
