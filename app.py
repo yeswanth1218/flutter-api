@@ -70,7 +70,7 @@ def process_image_with_gemini(image_data):
             "name": "Full name of the person",
             "job_title": "Job title or position",
             "company": "Company name",
-            "phone": "Phone number(s)",
+            "phone": "Phone number(s) - extract only the numeric digits separated by commas (e.g., '9121697675, 7306515159')",
             "email": "Email address(es)",
             "website": "Website URL(s)",
             "address": "Complete address as it appears on the card",
@@ -86,9 +86,10 @@ def process_image_with_gemini(image_data):
         IMPORTANT INSTRUCTIONS:
         1. If any field is not available on the business card, set it to "None" (as a string).
         2. Be precise and accurate in text extraction.
-        3. Maintain original formatting for phone numbers, emails, and URLs.
-        4. Return only the JSON object, no additional text or formatting.
-        5. Ensure the JSON is properly formatted and valid.
+        3. For phone numbers: Extract ONLY the numeric digits without country codes, parentheses, dashes, or spaces. If multiple phone numbers exist, separate them with commas and spaces (e.g., "9121697675, 7306515159").
+        4. For emails and URLs: Maintain original formatting.
+        5. Return only the JSON object, no additional text or formatting.
+        6. Ensure the JSON is properly formatted and valid.
         """
         
         # Generate content using the image and prompt
