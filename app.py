@@ -234,16 +234,16 @@ def extract_business_card():
                         INSERT INTO cards (
                             card_id, user_id, name, job_title, company, phone, email, 
                             website, address, linkedin, twitter, facebook, instagram, 
-                            additional_info, tags, card_type, created_at
+                            additional_info, tags, card_type, status, created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                     """
                     
                     cursor.execute(insert_query, (
                         card_id, user_id, name, job_title, company, phone, email,
                         website, address, linkedin, twitter, facebook, instagram,
-                        additional_info, tags, card_type, created_at
+                        additional_info, tags, card_type, 0, created_at
                     ))
                     
                     # Commit the transaction
@@ -451,14 +451,14 @@ def get_user_cards(user_id):
             if not user_exists:
                 return jsonify({"error": "User not found"}), 404
             
-            # Get all cards for the user
+            # Get all active cards for the user (status = 0)
             cursor.execute("""
                 SELECT 
                     card_id, user_id, name, job_title, company, phone, email, 
                     website, address, linkedin, twitter, facebook, instagram, 
-                    additional_info, tags, card_type, created_at
+                    additional_info, tags, card_type, status, created_at
                 FROM cards 
-                WHERE user_id = %s 
+                WHERE user_id = %s AND (status = 0 OR status IS NULL)
                 ORDER BY created_at DESC
             """, (user_id,))
             
@@ -486,7 +486,8 @@ def get_user_cards(user_id):
                     "additional_info": card[13],
                     "tags": card[14] if card[14] else [],
                     "card_type": card[15],
-                    "created_at": card[16].isoformat() if card[16] else None
+                    "status": card[16] if card[16] is not None else 0,
+                    "created_at": card[17].isoformat() if card[17] else None
                 }
                 cards_list.append(card_dict)
             
@@ -612,7 +613,7 @@ def update_card_details():
             cursor.execute("""
                 SELECT card_id, user_id, name, job_title, company, phone, email, 
                        website, address, linkedin, twitter, facebook, instagram, 
-                       additional_info, tags, card_type, created_at, updated_at
+                       additional_info, tags, card_type, status, created_at, updated_at
                 FROM cards 
                 WHERE card_id = %s AND user_id = %s
             """, (card_id, user_id))
@@ -640,8 +641,9 @@ def update_card_details():
                     "additional_info": card_data[13],
                     "tags": card_data[14],
                     "card_type": card_data[15],
-                    "created_at": card_data[16].isoformat() if card_data[16] else None,
-                    "updated_at": card_data[17].isoformat() if card_data[17] else None
+                    "status": card_data[16] if card_data[16] is not None else 0,
+                    "created_at": card_data[17].isoformat() if card_data[17] else None,
+                    "updated_at": card_data[18].isoformat() if card_data[18] else None
                 }
                 
                 return jsonify({
@@ -652,6 +654,96 @@ def update_card_details():
                 }), 200
             else:
                 return jsonify({"error": "Failed to retrieve updated card"}), 500
+                
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+@app.route('/delete_card', methods=['POST'])
+def delete_card():
+    """Delete a card by updating its status from 0 (active) to 1 (inactive)."""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
+        card_id = data.get('card_id')
+        
+        if not card_id:
+            return jsonify({"error": "card_id is required"}), 400
+        
+        # Validate UUID format
+        try:
+            uuid.UUID(card_id)
+        except ValueError:
+            return jsonify({"error": "Invalid card_id format"}), 400
+        
+        # Connect to database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # First, check if the status column exists in the cards table
+            cursor.execute("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'cards' AND column_name = 'status'
+            """)
+            status_column_exists = cursor.fetchone()
+            
+            # If status column doesn't exist, add it
+            if not status_column_exists:
+                cursor.execute("""
+                    ALTER TABLE cards 
+                    ADD COLUMN status INTEGER DEFAULT 0
+                """)
+                conn.commit()
+                print("Status column added to cards table")
+            
+            # Check if card exists
+            cursor.execute("SELECT card_id, status FROM cards WHERE card_id = %s", (card_id,))
+            card_record = cursor.fetchone()
+            
+            if not card_record:
+                return jsonify({"error": "Card not found"}), 404
+            
+            current_status = card_record[1] if len(card_record) > 1 else 0
+            
+            # Check if card is already inactive
+            if current_status == 1:
+                return jsonify({"error": "Card is already inactive"}), 400
+            
+            # Update the card status from 0 (active) to 1 (inactive)
+            cursor.execute("""
+                UPDATE cards 
+                SET status = 1, updated_at = %s
+                WHERE card_id = %s
+            """, (datetime.now(), card_id))
+            
+            # Check if any rows were affected
+            if cursor.rowcount == 0:
+                return jsonify({"error": "Failed to update card status"}), 500
+            
+            # Commit the transaction
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "message": "Card deleted successfully (status updated to inactive)",
+                "card_id": card_id
+            }), 200
                 
         except Exception as e:
             conn.rollback()
