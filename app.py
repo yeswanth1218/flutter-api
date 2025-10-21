@@ -755,6 +755,101 @@ def delete_card():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+@app.route('/add_category', methods=['POST'])
+def add_category():
+    """Add a new category for a user."""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        category_name = data.get('category_name')
+        
+        # Check if all required fields are provided
+        if not user_id or not category_name:
+            return jsonify({"error": "user_id and category_name are required"}), 400
+        
+        # Validate UUID format for user_id
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user_id format"}), 400
+        
+        # Validate category_name (basic validation)
+        if not isinstance(category_name, str) or len(category_name.strip()) == 0:
+            return jsonify({"error": "category_name must be a non-empty string"}), 400
+        
+        category_name = category_name.strip()
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+            user_exists = cursor.fetchone()
+            
+            if not user_exists:
+                return jsonify({"error": "User not found"}), 404
+            
+            # Check if category already exists for this user
+            cursor.execute(
+                "SELECT category_name, status FROM categories WHERE user_id = %s AND category_name = %s", 
+                (user_id, category_name)
+            )
+            existing_category = cursor.fetchone()
+            
+            status_value = 0  # Default status for new categories
+            
+            if existing_category:
+                # Category already exists, return the existing data with actual status
+                existing_status = existing_category[1]
+                return jsonify({
+                    "success": True,
+                    "message": "Category already exists",
+                    "user_id": user_id,
+                    "category_name": category_name,
+                    "status": existing_status,
+                    "already_exists": True
+                }), 200
+            else:
+                # Insert new category
+                insert_query = """
+                    INSERT INTO categories (user_id, category_name, status)
+                    VALUES (%s, %s, %s)
+                """
+                cursor.execute(insert_query, (user_id, category_name, status_value))
+                
+                # Commit the transaction
+                conn.commit()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Category added successfully",
+                    "user_id": user_id,
+                    "category_name": category_name,
+                    "status": status_value,
+                    "already_exists": False
+                }), 201
+                
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
 @app.errorhandler(413)
 def too_large(e):
     """Handle file too large error."""
