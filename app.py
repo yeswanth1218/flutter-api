@@ -329,6 +329,16 @@ def register_user():
             """
             cursor.execute(insert_query, (user_id, user_name, email, phone, encoded_password, account_type, status, created_at))
             
+            # Insert default categories for the new user
+            default_categories = ['Business', 'Personal', 'Favorites', 'Important']
+            category_insert_query = """
+                INSERT INTO categories (user_id, category_name, status)
+                VALUES (%s, %s, %s)
+            """
+            
+            for category_name in default_categories:
+                cursor.execute(category_insert_query, (user_id, category_name, 0))
+            
             # Commit the transaction
             conn.commit()
             
