@@ -850,6 +850,70 @@ def add_category():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+@app.route('/get_categories', methods=['GET'])
+def get_categories():
+    """Get all categories for a user with status = 0."""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        
+        # Check if user_id is provided
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+        
+        # Validate UUID format for user_id
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user_id format"}), 400
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Check if user exists
+            cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+            user_exists = cursor.fetchone()
+            
+            if not user_exists:
+                return jsonify({"error": "User not found"}), 404
+            
+            # Get all categories for the user with status = 0
+            cursor.execute(
+                "SELECT category_name FROM categories WHERE user_id = %s AND status = 0 ORDER BY category_name", 
+                (user_id,)
+            )
+            categories = cursor.fetchall()
+            
+            # Extract category names from the result
+            category_names = [category[0] for category in categories]
+            
+            return jsonify({
+                "success": True,
+                "user_id": user_id,
+                "categories": category_names,
+                "count": len(category_names)
+            }), 200
+                
+        except Exception as e:
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
 @app.errorhandler(413)
 def too_large(e):
     """Handle file too large error."""
