@@ -755,6 +755,100 @@ def delete_card():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+@app.route('/deleted_cards', methods=['GET'])
+def get_deleted_cards():
+    """Get all deleted cards for a specific user (status = 1)."""
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        user_id = data.get('user_id')
+        
+        # Check if user_id is provided
+        if not user_id:
+            return jsonify({"error": "user_id is required"}), 400
+        
+        # Validate UUID format for user_id
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            return jsonify({"error": "Invalid user_id format"}), 400
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # First, verify that the user exists
+            cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+            user_exists = cursor.fetchone()
+            
+            if not user_exists:
+                return jsonify({"error": "User not found"}), 404
+            
+            # Get all deleted cards for the user (status = 1)
+            cursor.execute("""
+                SELECT 
+                    card_id, user_id, name, job_title, company, phone, email, 
+                    website, address, linkedin, twitter, facebook, instagram, 
+                    additional_info, tags, card_type, status, created_at
+                FROM cards 
+                WHERE user_id = %s AND status = 1
+                ORDER BY created_at DESC
+            """, (user_id,))
+            
+            cards_data = cursor.fetchall()
+            
+            # Format the response
+            cards_list = []
+            for card in cards_data:
+                card_dict = {
+                    "card_id": str(card[0]),
+                    "user_id": str(card[1]),
+                    "name": card[2],
+                    "job_title": card[3],
+                    "company": card[4],
+                    "phone": card[5],
+                    "email": card[6],
+                    "website": card[7],
+                    "address": card[8],
+                    "social_media": {
+                        "linkedin": card[9],
+                        "twitter": card[10],
+                        "facebook": card[11],
+                        "instagram": card[12]
+                    },
+                    "additional_info": card[13],
+                    "tags": card[14] if card[14] else [],
+                    "card_type": card[15],
+                    "status": card[16],
+                    "created_at": card[17].isoformat() if card[17] else None
+                }
+                cards_list.append(card_dict)
+            
+            return jsonify({
+                "success": True,
+                "user_id": user_id,
+                "deleted_cards": cards_list,
+                "total_deleted_cards": len(cards_list)
+            }), 200
+            
+        except Exception as e:
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
 @app.route('/add_category', methods=['POST'])
 def add_category():
     """Add a new category for a user."""
