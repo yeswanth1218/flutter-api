@@ -665,9 +665,9 @@ def update_card_details():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
-@app.route('/delete_card', methods=['POST'])
-def delete_card():
-    """Delete a card by updating its status from 0 (active) to 1 (inactive)."""
+@app.route('/delete_or_restore', methods=['POST'])
+def delete_or_restore():
+    """Delete, restore, or deactivate a card based on the action parameter."""
     try:
         # Get JSON data from request
         data = request.get_json()
@@ -677,15 +677,21 @@ def delete_card():
             return jsonify({"error": "No data provided"}), 400
             
         card_id = data.get('card_id')
+        action = data.get('action')
         
-        if not card_id:
-            return jsonify({"error": "card_id is required"}), 400
+        if not card_id or not action:
+            return jsonify({"error": "card_id and action are required"}), 400
         
         # Validate UUID format
         try:
             uuid.UUID(card_id)
         except ValueError:
             return jsonify({"error": "Invalid card_id format"}), 400
+        
+        # Validate action parameter
+        valid_actions = ['inactive', 'delete', 'restore']
+        if action not in valid_actions:
+            return jsonify({"error": f"Invalid action. Must be one of: {', '.join(valid_actions)}"}), 400
         
         # Connect to database
         conn = get_db_connection()
@@ -721,28 +727,61 @@ def delete_card():
             
             current_status = card_record[1] if len(card_record) > 1 else 0
             
-            # Check if card is already inactive
-            if current_status == 1:
-                return jsonify({"error": "Card is already inactive"}), 400
-            
-            # Update the card status from 0 (active) to 1 (inactive)
-            cursor.execute("""
-                UPDATE cards 
-                SET status = 1, updated_at = %s
-                WHERE card_id = %s
-            """, (datetime.now(), card_id))
-            
-            # Check if any rows were affected
-            if cursor.rowcount == 0:
-                return jsonify({"error": "Failed to update card status"}), 500
+            # Handle different actions
+            if action == 'inactive':
+                # Check if card is already inactive
+                if current_status == 1:
+                    return jsonify({"error": "Card is already inactive"}), 400
+                
+                # Update the card status from 0 (active) to 1 (inactive)
+                cursor.execute("""
+                    UPDATE cards 
+                    SET status = 1, updated_at = %s
+                    WHERE card_id = %s
+                """, (datetime.now(), card_id))
+                
+                # Check if any rows were affected
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Failed to update card status"}), 500
+                
+                message = "Card marked as inactive successfully"
+                
+            elif action == 'delete':
+                # Completely delete the card record from the database
+                cursor.execute("DELETE FROM cards WHERE card_id = %s", (card_id,))
+                
+                # Check if any rows were affected
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Failed to delete card"}), 500
+                
+                message = "Card deleted permanently from database"
+                
+            elif action == 'restore':
+                # Check if card is already active
+                if current_status == 0:
+                    return jsonify({"error": "Card is already active"}), 400
+                
+                # Update the card status from 1 (inactive) to 0 (active)
+                cursor.execute("""
+                    UPDATE cards 
+                    SET status = 0, updated_at = %s
+                    WHERE card_id = %s
+                """, (datetime.now(), card_id))
+                
+                # Check if any rows were affected
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Failed to restore card"}), 500
+                
+                message = "Card restored successfully"
             
             # Commit the transaction
             conn.commit()
             
             return jsonify({
                 "success": True,
-                "message": "Card deleted successfully (status updated to inactive)",
-                "card_id": card_id
+                "message": message,
+                "card_id": card_id,
+                "action": action
             }), 200
                 
         except Exception as e:
