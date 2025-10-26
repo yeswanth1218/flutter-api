@@ -10,6 +10,11 @@ import io
 
 from connections import get_db_connection
 from llm_module import process_image_with_gemini, validate_business_card_images
+from logger_config import get_logger, log_database_operation
+
+# Initialize logger
+logger = get_logger(__name__)
+logger.info("Functions module initialized")
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
@@ -17,19 +22,28 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
 def allowed_file(filename):
     """Check if the uploaded file has an allowed extension."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    logger.debug(f"Checking if file '{filename}' has allowed extension")
+    result = '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    logger.debug(f"File '{filename}' allowed: {result}")
+    return result
 
 def health_check():
     """Health check endpoint."""
-    return jsonify({"status": "healthy", "message": "Business Card Reader API is running"}), 200
+    logger.info("Health check endpoint called")
+    response = {"status": "healthy", "message": "Business Card Reader API is running"}
+    logger.info("Health check completed successfully")
+    return jsonify(response), 200
 
 def extract_business_card():
     """Extract business card information from uploaded image(s). Supports 1-2 images."""
+    logger.info("Extract business card function called")
+    
     try:
         # Check for images in request files
         images = []
         image_files = []
+        
+        logger.debug("Checking for image files in request")
         
         # Check for 'image' (single image) or 'image1', 'image2' (multiple images)
         if 'image' in request.files:
@@ -37,6 +51,7 @@ def extract_business_card():
             file = request.files['image']
             if file.filename != '':
                 image_files.append(file)
+                logger.info(f"Single image detected: {file.filename}")
         else:
             # Multiple images case - check for image1 and image2
             for i in range(1, 3):  # Support up to 2 images
@@ -45,49 +60,68 @@ def extract_business_card():
                     file = request.files[field_name]
                     if file.filename != '':
                         image_files.append(file)
+                        logger.info(f"Multiple image detected: {field_name} = {file.filename}")
+        
+        logger.info(f"Total images found: {len(image_files)}")
         
         # Validate we have at least one image
         if not image_files:
+            logger.warning("No image files provided in request")
             return jsonify({"error": "No image file(s) provided. Use 'image' for single image or 'image1', 'image2' for multiple images"}), 400
         
         # Validate maximum 2 images
         if len(image_files) > 2:
+            logger.warning(f"Too many images provided: {len(image_files)}")
             return jsonify({"error": "Maximum 2 images allowed"}), 400
         
         # Process each image file
-        for file in image_files:
+        logger.info("Starting image processing and validation")
+        for i, file in enumerate(image_files, 1):
+            logger.debug(f"Processing image {i}: {file.filename}")
+            
             # Check if file is allowed
             if not allowed_file(file.filename):
+                logger.error(f"Invalid file type for {file.filename}")
                 return jsonify({"error": f"Invalid file type for {file.filename}. Allowed types: png, jpg, jpeg, gif, bmp, webp"}), 400
             
             try:
                 # Read the image file
                 image_bytes = file.read()
+                logger.debug(f"Read {len(image_bytes)} bytes from {file.filename}")
                 
                 # Validate that it's actually an image
                 try:
                     image = Image.open(io.BytesIO(image_bytes))
                     image.verify()  # Verify that it's a valid image
+                    logger.debug(f"Image validation successful for {file.filename}")
                 except Exception as e:
+                    logger.error(f"Image validation failed for {file.filename}: {str(e)}")
                     return jsonify({"error": f"Invalid image file: {file.filename}"}), 400
                 
                 # Reset file pointer and read again for processing
                 file.seek(0)
                 image_bytes = file.read()
                 images.append(image_bytes)
+                logger.debug(f"Image {file.filename} added to processing queue")
                 
             except Exception as e:
+                logger.error(f"Error processing image {file.filename}: {str(e)}")
                 return jsonify({"error": f"Error processing image {file.filename}: {str(e)}"}), 400
         
         # Step 1: Validate if images contain business cards using AI
+        logger.info("Starting AI validation of business card images")
         validation_result = validate_business_card_images(images)
         
         if not validation_result["success"]:
+            logger.error(f"Image validation failed: {validation_result['error']}")
             return jsonify({"error": f"Image validation failed: {validation_result['error']}"}), 500
         
         # Check validation status
         validation_data = validation_result["validation"]
+        logger.info(f"Validation status: {validation_data['status']}")
+        
         if validation_data["status"] == "stop":
+            logger.warning(f"Business card validation failed: {validation_data['reason']}")
             return jsonify({
                 "success": False,
                 "error": "Image validation failed",
@@ -95,39 +129,52 @@ def extract_business_card():
             }), 400
         
         # Step 2: Process the image(s) with Gemini AI for data extraction
+        logger.info("Starting business card data extraction with Gemini AI")
         result = process_image_with_gemini(images)
         
         if not result["success"]:
+            logger.error(f"Gemini AI processing failed: {result['error']}")
             return jsonify({"error": result["error"]}), 500
         
         extracted_data = result["data"]
+        logger.info("Business card data extraction completed successfully")
+        logger.debug(f"Extracted data keys: {list(extracted_data.keys())}")
         
         # Get user_id from request (if provided)
         user_id = request.form.get('user_id')
+        logger.debug(f"User ID from request: {user_id}")
         
         # If user_id is provided, save to database
         if user_id:
+            logger.info(f"Saving extracted data to database for user: {user_id}")
             try:
                 # Validate UUID format
                 uuid.UUID(user_id)
+                logger.debug("User ID format validation successful")
                 
                 # Get database connection
                 conn = get_db_connection()
                 if not conn:
+                    logger.error("Database connection failed")
                     return jsonify({"error": "Database connection failed"}), 500
                 
                 try:
                     cursor = conn.cursor()
                     
                     # Check if user exists
+                    logger.debug("Checking if user exists in database")
                     cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
                     user_exists = cursor.fetchone()
                     
                     if not user_exists:
+                        logger.warning(f"User not found in database: {user_id}")
                         return jsonify({"error": "User not found"}), 404
+                    
+                    logger.debug("User exists, proceeding with card insertion")
                     
                     # Generate unique card_id
                     card_id = str(uuid.uuid4())
+                    logger.debug(f"Generated card ID: {card_id}")
                     
                     # Clean None values function
                     def clean_none_values(value):
@@ -136,6 +183,7 @@ def extract_business_card():
                         return value
                     
                     # Insert card data into database
+                    logger.debug("Inserting card data into database")
                     insert_query = """
                         INSERT INTO cards (
                             card_id, user_id, name, job_title, company, phone, email, 
@@ -165,8 +213,11 @@ def extract_business_card():
                         datetime.now()
                     ))
                     
+                    log_database_operation("INSERT", "cards", True)
+                    
                     # Commit the transaction
                     conn.commit()
+                    logger.info(f"Business card data saved successfully with card_id: {card_id}")
                     
                     # Return success response with card_id
                     return jsonify({
@@ -178,17 +229,23 @@ def extract_business_card():
                     
                 except Exception as e:
                     conn.rollback()
+                    logger.error(f"Database error during card insertion: {str(e)}")
+                    log_database_operation("INSERT", "cards", False, str(e))
                     return jsonify({"error": f"Database error: {str(e)}"}), 500
                 finally:
                     cursor.close()
                     conn.close()
+                    logger.debug("Database connection closed")
                     
             except ValueError:
+                logger.error(f"Invalid user_id format: {user_id}")
                 return jsonify({"error": "Invalid user_id format"}), 400
             except Exception as e:
+                logger.error(f"Database operation failed: {str(e)}")
                 return jsonify({"error": f"Database operation failed: {str(e)}"}), 500
         else:
             # Return extracted data without saving to database
+            logger.info("Returning extracted data without database save (no user_id provided)")
             return jsonify({
                 "success": True,
                 "message": "Business card extracted successfully",
@@ -196,57 +253,78 @@ def extract_business_card():
             }), 200
                 
     except Exception as e:
+        logger.error(f"Server error in extract_business_card: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 def register_user():
     """Register a new user."""
+    logger.info("Register user function called")
+    
     try:
         # Get JSON data from request
         data = request.get_json()
+        logger.debug(f"Received registration data: {data is not None}")
         
         # Validate required fields
         if not data:
+            logger.warning("No data provided in registration request")
             return jsonify({"error": "No data provided"}), 400
             
         name = data.get('name')
         phone = data.get('phone')
         password = data.get('password')
         
+        logger.debug(f"Registration attempt for name: {name}, phone: {phone}")
+        
         if not name or not phone or not password:
+            logger.warning("Missing required fields in registration")
             return jsonify({"error": "Name, phone, and password are required"}), 400
         
         # Basic validation
         if len(name.strip()) == 0:
+            logger.warning("Empty name provided in registration")
             return jsonify({"error": "Name cannot be empty"}), 400
             
         if len(phone.strip()) == 0:
+            logger.warning("Empty phone provided in registration")
             return jsonify({"error": "Phone cannot be empty"}), 400
             
         if len(password) < 6:
+            logger.warning(f"Password too short: {len(password)} characters")
             return jsonify({"error": "Password must be at least 6 characters long"}), 400
+        
+        logger.info(f"Registration validation passed for phone: {phone}")
         
         # Get database connection
         conn = get_db_connection()
         if not conn:
+            logger.error("Database connection failed during registration")
             return jsonify({"error": "Database connection failed"}), 500
         
         try:
             cursor = conn.cursor()
             
             # Check if phone number already exists
+            logger.debug("Checking if phone number already exists")
             cursor.execute("SELECT phone FROM users WHERE phone = %s", (phone,))
             existing_user = cursor.fetchone()
             
             if existing_user:
+                logger.warning(f"Phone number already registered: {phone}")
                 return jsonify({"error": "Phone number already registered"}), 409
+            
+            logger.debug("Phone number is available, proceeding with registration")
             
             # Generate unique user_id
             user_id = str(uuid.uuid4())
+            logger.debug(f"Generated user ID: {user_id}")
             
             # Encode password in base64
             encoded_password = base64.b64encode(password.encode()).decode()
+            logger.debug("Password encoded successfully")
             
             # Insert new user
+            logger.debug("Inserting new user into database")
             insert_query = """
                 INSERT INTO users (user_id, name, phone, password, status, created_at)
                 VALUES (%s, %s, %s, %s, %s, %s)
@@ -261,8 +339,11 @@ def register_user():
                 datetime.now()
             ))
             
+            log_database_operation("INSERT", "users", True)
+            
             # Commit the transaction
             conn.commit()
+            logger.info(f"User registered successfully with ID: {user_id}")
             
             return jsonify({
                 "success": True,
@@ -274,28 +355,39 @@ def register_user():
             
         except Exception as e:
             conn.rollback()
+            logger.error(f"Database error during user registration: {str(e)}")
+            log_database_operation("INSERT", "users", False, str(e))
             return jsonify({"error": f"Database error: {str(e)}"}), 500
         finally:
             cursor.close()
             conn.close()
+            logger.debug("Database connection closed")
             
     except Exception as e:
+        logger.error(f"Server error in register_user: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 def login_user():
     """Authenticate user login."""
+    logger.info("Login user function called")
+    
     try:
         # Get JSON data from request
         data = request.get_json()
+        logger.debug(f"Received login data: {data is not None}")
         
         # Validate required fields
         if not data:
+            logger.warning("No data provided in login request")
             return jsonify({"error": "No data provided"}), 400
             
         phone = data.get('phone')
         password = data.get('password')
         
+        logger.debug(f"Login attempt for phone: {phone}")
+        
         if not phone or not password:
+            logger.warning("Missing phone or password in login request")
             return jsonify({"error": "Phone and password are required"}), 400
         
         # Basic validation
