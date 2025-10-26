@@ -9,7 +9,7 @@ from PIL import Image
 import io
 
 from connections import get_db_connection
-from llm_module import process_image_with_gemini
+from llm_module import process_image_with_gemini, validate_business_card_images
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
@@ -79,7 +79,22 @@ def extract_business_card():
             except Exception as e:
                 return jsonify({"error": f"Error processing image {file.filename}: {str(e)}"}), 400
         
-        # Process the image(s) with Gemini AI
+        # Step 1: Validate if images contain business cards using AI
+        validation_result = validate_business_card_images(images)
+        
+        if not validation_result["success"]:
+            return jsonify({"error": f"Image validation failed: {validation_result['error']}"}), 500
+        
+        # Check validation status
+        validation_data = validation_result["validation"]
+        if validation_data["status"] == "stop":
+            return jsonify({
+                "success": False,
+                "error": "Image validation failed",
+                "reason": validation_data["reason"]
+            }), 400
+        
+        # Step 2: Process the image(s) with Gemini AI for data extraction
         result = process_image_with_gemini(images)
         
         if not result["success"]:

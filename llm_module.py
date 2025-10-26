@@ -2,7 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
-from prompts import SINGLE_IMAGE_PROMPT, MULTIPLE_IMAGES_PROMPT
+from prompts import SINGLE_IMAGE_PROMPT, MULTIPLE_IMAGES_PROMPT, IMAGE_VALIDATION_PROMPT
 
 # Load environment variables
 load_dotenv()
@@ -26,14 +26,22 @@ def process_image_with_gemini(image_data):
         
         # Handle both single image and multiple images
         if isinstance(image_data, list):
-            images = image_data
-            num_images = len(images)
+            raw_images = image_data
         else:
-            images = [image_data]
-            num_images = 1
+            raw_images = [image_data]
+        
+        # Convert bytes to proper format for Gemini
+        images = []
+        for img_bytes in raw_images:
+            # Create a proper image object that Gemini can understand
+            image_part = {
+                "mime_type": "image/jpeg",  # Default to JPEG, Gemini will handle other formats
+                "data": img_bytes
+            }
+            images.append(image_part)
         
         # Get the appropriate prompt based on number of images
-        prompt = SINGLE_IMAGE_PROMPT if num_images == 1 else MULTIPLE_IMAGES_PROMPT
+        prompt = SINGLE_IMAGE_PROMPT if len(raw_images) == 1 else MULTIPLE_IMAGES_PROMPT
         
         # Prepare content for generation (prompt + images)
         content = [prompt] + images
@@ -93,4 +101,88 @@ def process_image_with_gemini(image_data):
         return {
             "success": False,
             "error": f"Gemini AI processing error: {str(e)}"
+        }
+
+def validate_business_card_images(image_data):
+    """
+    Validate if the uploaded image(s) contain business cards using Gemini AI.
+    
+    Args:
+        image_data: Either a single image bytes object or a list of image bytes objects
+    
+    Returns:
+        dict: Response containing validation result with status and reason
+    """
+    try:
+        # Initialize the Gemini model
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        
+        # Handle both single image and multiple images
+        if isinstance(image_data, list):
+            raw_images = image_data
+        else:
+            raw_images = [image_data]
+        
+        # Convert bytes to proper format for Gemini
+        images = []
+        for img_bytes in raw_images:
+            # Create a proper image object that Gemini can understand
+            image_part = {
+                "mime_type": "image/jpeg",  # Default to JPEG, Gemini will handle other formats
+                "data": img_bytes
+            }
+            images.append(image_part)
+        
+        # Prepare content for generation (validation prompt + images)
+        content = [IMAGE_VALIDATION_PROMPT] + images
+        
+        # Generate content using the image(s) and validation prompt
+        response = model.generate_content(content)
+        
+        # Try to parse the response as JSON
+        try:
+            # Clean the response text to extract JSON
+            response_text = response.text.strip()
+            
+            # Remove any markdown formatting if present
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            
+            # Parse JSON response
+            validation_result = json.loads(response_text.strip())
+            
+            # Validate the required fields are present
+            if "status" not in validation_result or "reason" not in validation_result:
+                return {
+                    "success": False,
+                    "error": "Invalid validation response format - missing required fields",
+                    "raw_response": response.text
+                }
+            
+            # Validate status field has correct values
+            if validation_result["status"] not in ["proceed", "stop"]:
+                return {
+                    "success": False,
+                    "error": "Invalid status value - must be 'proceed' or 'stop'",
+                    "raw_response": response.text
+                }
+            
+            return {
+                "success": True,
+                "validation": validation_result
+            }
+            
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"Failed to parse validation JSON response: {str(e)}",
+                "raw_response": response.text
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Gemini AI validation error: {str(e)}"
         }

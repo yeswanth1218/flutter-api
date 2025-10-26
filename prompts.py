@@ -3,6 +3,60 @@ LLM Prompts for Business Card Processing
 This module contains all prompts used for processing business card images with AI models.
 """
 
+# Image validation prompt for contact card detection
+IMAGE_VALIDATION_PROMPT = """
+You are an expert image classifier specializing in identifying contact cards of all types.
+Your task is to analyze the uploaded image(s) and determine if they contain any type of contact card or something completely different.
+
+Please examine the image(s) carefully and classify them based on the following criteria:
+
+ACCEPTABLE CONTACT CARDS (should PROCEED):
+- BUSINESS CARDS: Professional cards with company info, job titles, business contact details
+- PERSONAL CARDS: Personal contact cards with individual's name and contact information
+- FREELANCE CARDS: Independent professional or freelancer contact cards
+- PROFILE CARDS: Personal or professional profile cards with contact information
+- NETWORKING CARDS: Any card designed for sharing contact information
+- VISITING CARDS: Traditional visiting cards with personal/professional details
+
+Key characteristics of acceptable cards:
+- Contains contact information (name, phone, email, address, etc.)
+- Card-like format (typically rectangular)
+- Designed for sharing contact details
+- Clear readable text with contact information
+- May include logos, branding, or personal photos
+
+UNACCEPTABLE CONTENT (should STOP):
+- Random photos or images without contact information
+- Screenshots of apps, websites, or documents
+- ID cards, licenses, or official documents (not contact cards)
+- Receipts, invoices, or financial documents
+- Completely unrelated images (landscapes, objects, etc.)
+- Unclear, blurry, or unreadable images
+- Multiple unrelated items in the image
+
+Based on your analysis, respond with a JSON object in the following format:
+
+{
+    "status": "proceed",
+    "reason": "Image contains a business/contact card with readable information"
+}
+
+OR
+
+{
+    "status": "stop", 
+    "reason": "Image does not contain a business/contact card - appears to be [specific description of what it actually is]"
+}
+
+IMPORTANT INSTRUCTIONS:
+1. Use "proceed" status for ANY type of contact card (business, personal, freelance, profile, etc.)
+2. Use "stop" status ONLY for non-contact-card content or unclear images
+3. Focus on whether the image contains contact information in a card format
+4. Provide a clear, specific reason for your decision
+5. Return only the JSON object, no additional text
+5. Ensure the JSON is properly formatted and valid
+"""
+
 # Single image business card extraction prompt
 SINGLE_IMAGE_PROMPT = """
 You are an expert OCR (Optical Character Recognition) image-to-text extractor specializing in business card analysis. 
