@@ -2,6 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
+from prompts import SINGLE_IMAGE_PROMPT, MULTIPLE_IMAGES_PROMPT
 
 # Load environment variables
 load_dotenv()
@@ -10,47 +11,35 @@ load_dotenv()
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 def process_image_with_gemini(image_data):
-    """Process the image with Gemini AI to extract business card information."""
+    """
+    Process the image(s) with Gemini AI to extract business card information.
+    
+    Args:
+        image_data: Either a single image bytes object or a list of image bytes objects
+    
+    Returns:
+        dict: Response containing success status and extracted data or error message
+    """
     try:
         # Initialize the Gemini model
         model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
-        # Create the prompt for business card extraction
-        prompt = """
-        You are an expert OCR (Optical Character Recognition) image-to-text extractor specializing in business card analysis. 
-        Your task is to carefully examine this business card image and extract all visible information with high accuracy.
+        # Handle both single image and multiple images
+        if isinstance(image_data, list):
+            images = image_data
+            num_images = len(images)
+        else:
+            images = [image_data]
+            num_images = 1
         
-        Please analyze this business card image and extract all the information in a structured JSON format. 
-        Include the following fields if available:
+        # Get the appropriate prompt based on number of images
+        prompt = SINGLE_IMAGE_PROMPT if num_images == 1 else MULTIPLE_IMAGES_PROMPT
         
-        {
-            "name": "Full name of the person",
-            "job_title": "Job title or position",
-            "company": "Company name",
-            "phone": "Phone number(s) - extract only the numeric digits separated by commas (e.g., '9121697675, 7306515159')",
-            "email": "Email address(es)",
-            "website": "Website URL(s)",
-            "address": "Complete address as it appears on the card",
-            "social_media": {
-                "linkedin": "LinkedIn profile",
-                "twitter": "Twitter handle",
-                "facebook": "Facebook profile",
-                "instagram": "Instagram handle"
-            },
-            "additional_info": "Any other relevant information found on the card"
-        }
+        # Prepare content for generation (prompt + images)
+        content = [prompt] + images
         
-        IMPORTANT INSTRUCTIONS:
-        1. If any field is not available on the business card, set it to "None" (as a string).
-        2. Be precise and accurate in text extraction.
-        3. For phone numbers: Extract ONLY the numeric digits without country codes, parentheses, dashes, or spaces. If multiple phone numbers exist, separate them with commas and spaces (e.g., "9121697675, 7306515159").
-        4. For emails and URLs: Maintain original formatting.
-        5. Return only the JSON object, no additional text or formatting.
-        6. Ensure the JSON is properly formatted and valid.
-        """
-        
-        # Generate content using the image and prompt
-        response = model.generate_content([prompt, image_data])
+        # Generate content using the image(s) and prompt
+        response = model.generate_content(content)
         
         # Try to parse the response as JSON
         try:

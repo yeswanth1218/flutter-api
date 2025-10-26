@@ -25,141 +25,161 @@ def health_check():
     return jsonify({"status": "healthy", "message": "Business Card Reader API is running"}), 200
 
 def extract_business_card():
-    """Extract business card information from uploaded image."""
+    """Extract business card information from uploaded image(s). Supports 1-2 images."""
     try:
-        # Check if the post request has the file part
-        if 'image' not in request.files:
-            return jsonify({"error": "No image file provided"}), 400
+        # Check for images in request files
+        images = []
+        image_files = []
         
-        file = request.files['image']
+        # Check for 'image' (single image) or 'image1', 'image2' (multiple images)
+        if 'image' in request.files:
+            # Single image case
+            file = request.files['image']
+            if file.filename != '':
+                image_files.append(file)
+        else:
+            # Multiple images case - check for image1 and image2
+            for i in range(1, 3):  # Support up to 2 images
+                field_name = f'image{i}'
+                if field_name in request.files:
+                    file = request.files[field_name]
+                    if file.filename != '':
+                        image_files.append(file)
         
-        # If user does not select file, browser also submits an empty part without filename
-        if file.filename == '':
-            return jsonify({"error": "No image file selected"}), 400
+        # Validate we have at least one image
+        if not image_files:
+            return jsonify({"error": "No image file(s) provided. Use 'image' for single image or 'image1', 'image2' for multiple images"}), 400
         
-        # Check if file is allowed
-        if not allowed_file(file.filename):
-            return jsonify({"error": "Invalid file type. Allowed types: png, jpg, jpeg, gif, bmp, webp"}), 400
+        # Validate maximum 2 images
+        if len(image_files) > 2:
+            return jsonify({"error": "Maximum 2 images allowed"}), 400
         
-        try:
-            # Read the image file
-            image_bytes = file.read()
+        # Process each image file
+        for file in image_files:
+            # Check if file is allowed
+            if not allowed_file(file.filename):
+                return jsonify({"error": f"Invalid file type for {file.filename}. Allowed types: png, jpg, jpeg, gif, bmp, webp"}), 400
             
-            # Validate that it's actually an image
             try:
-                image = Image.open(io.BytesIO(image_bytes))
-                image.verify()  # Verify that it's a valid image
-            except Exception as e:
-                return jsonify({"error": "Invalid image file"}), 400
-            
-            # Reset file pointer and read again for processing
-            file.seek(0)
-            image_bytes = file.read()
-            
-            # Process the image with Gemini AI
-            result = process_image_with_gemini(image_bytes)
-            
-            if not result["success"]:
-                return jsonify({"error": result["error"]}), 500
-            
-            extracted_data = result["data"]
-            
-            # Get user_id from request (if provided)
-            user_id = request.form.get('user_id')
-            
-            # If user_id is provided, save to database
-            if user_id:
-                try:
-                    # Validate UUID format
-                    uuid.UUID(user_id)
-                    
-                    # Get database connection
-                    conn = get_db_connection()
-                    if not conn:
-                        return jsonify({"error": "Database connection failed"}), 500
-                    
-                    try:
-                        cursor = conn.cursor()
-                        
-                        # Check if user exists
-                        cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-                        user_exists = cursor.fetchone()
-                        
-                        if not user_exists:
-                            return jsonify({"error": "User not found"}), 404
-                        
-                        # Generate unique card_id
-                        card_id = str(uuid.uuid4())
-                        
-                        # Clean None values function
-                        def clean_none_values(value):
-                            if value is None or value == "None" or value == "":
-                                return None
-                            return value
-                        
-                        # Insert card data into database
-                        insert_query = """
-                            INSERT INTO cards (
-                                card_id, user_id, name, job_title, company, phone, email, 
-                                website, address, linkedin, twitter, facebook, instagram, 
-                                additional_info, card_type, created_at
-                            ) VALUES (
-                                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                            )
-                        """
-                        
-                        cursor.execute(insert_query, (
-                            card_id,
-                            user_id,
-                            clean_none_values(extracted_data.get("name")),
-                            clean_none_values(extracted_data.get("job_title")),
-                            clean_none_values(extracted_data.get("company")),
-                            clean_none_values(extracted_data.get("phone")),
-                            clean_none_values(extracted_data.get("email")),
-                            clean_none_values(extracted_data.get("website")),
-                            clean_none_values(extracted_data.get("address")),
-                            clean_none_values(extracted_data.get("social_media", {}).get("linkedin")),
-                            clean_none_values(extracted_data.get("social_media", {}).get("twitter")),
-                            clean_none_values(extracted_data.get("social_media", {}).get("facebook")),
-                            clean_none_values(extracted_data.get("social_media", {}).get("instagram")),
-                            clean_none_values(extracted_data.get("additional_info")),
-                            "business_card",  # card_type
-                            datetime.now()
-                        ))
-                        
-                        # Commit the transaction
-                        conn.commit()
-                        
-                        # Return success response with card_id
-                        return jsonify({
-                            "success": True,
-                            "message": "Business card extracted and saved successfully",
-                            "card_id": card_id,
-                            "extracted_data": extracted_data
-                        }), 200
-                        
-                    except Exception as e:
-                        conn.rollback()
-                        return jsonify({"error": f"Database error: {str(e)}"}), 500
-                    finally:
-                        cursor.close()
-                        conn.close()
-                        
-                except ValueError:
-                    return jsonify({"error": "Invalid user_id format"}), 400
-                except Exception as e:
-                    return jsonify({"error": f"Database operation failed: {str(e)}"}), 500
-            else:
-                # Return extracted data without saving to database
-                return jsonify({
-                    "success": True,
-                    "message": "Business card extracted successfully",
-                    "extracted_data": extracted_data
-                }), 200
+                # Read the image file
+                image_bytes = file.read()
                 
-        except Exception as e:
-            return jsonify({"error": f"Image processing error: {str(e)}"}), 500
-            
+                # Validate that it's actually an image
+                try:
+                    image = Image.open(io.BytesIO(image_bytes))
+                    image.verify()  # Verify that it's a valid image
+                except Exception as e:
+                    return jsonify({"error": f"Invalid image file: {file.filename}"}), 400
+                
+                # Reset file pointer and read again for processing
+                file.seek(0)
+                image_bytes = file.read()
+                images.append(image_bytes)
+                
+            except Exception as e:
+                return jsonify({"error": f"Error processing image {file.filename}: {str(e)}"}), 400
+        
+        # Process the image(s) with Gemini AI
+        result = process_image_with_gemini(images)
+        
+        if not result["success"]:
+            return jsonify({"error": result["error"]}), 500
+        
+        extracted_data = result["data"]
+        
+        # Get user_id from request (if provided)
+        user_id = request.form.get('user_id')
+        
+        # If user_id is provided, save to database
+        if user_id:
+            try:
+                # Validate UUID format
+                uuid.UUID(user_id)
+                
+                # Get database connection
+                conn = get_db_connection()
+                if not conn:
+                    return jsonify({"error": "Database connection failed"}), 500
+                
+                try:
+                    cursor = conn.cursor()
+                    
+                    # Check if user exists
+                    cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+                    user_exists = cursor.fetchone()
+                    
+                    if not user_exists:
+                        return jsonify({"error": "User not found"}), 404
+                    
+                    # Generate unique card_id
+                    card_id = str(uuid.uuid4())
+                    
+                    # Clean None values function
+                    def clean_none_values(value):
+                        if value is None or value == "None" or value == "":
+                            return None
+                        return value
+                    
+                    # Insert card data into database
+                    insert_query = """
+                        INSERT INTO cards (
+                            card_id, user_id, name, job_title, company, phone, email, 
+                            website, address, linkedin, twitter, facebook, instagram, 
+                            additional_info, card_type, created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
+                    """
+                    
+                    cursor.execute(insert_query, (
+                        card_id,
+                        user_id,
+                        clean_none_values(extracted_data.get("name")),
+                        clean_none_values(extracted_data.get("job_title")),
+                        clean_none_values(extracted_data.get("company")),
+                        clean_none_values(extracted_data.get("phone")),
+                        clean_none_values(extracted_data.get("email")),
+                        clean_none_values(extracted_data.get("website")),
+                        clean_none_values(extracted_data.get("address")),
+                        clean_none_values(extracted_data.get("social_media", {}).get("linkedin")),
+                        clean_none_values(extracted_data.get("social_media", {}).get("twitter")),
+                        clean_none_values(extracted_data.get("social_media", {}).get("facebook")),
+                        clean_none_values(extracted_data.get("social_media", {}).get("instagram")),
+                        clean_none_values(extracted_data.get("additional_info")),
+                        "business_card",  # card_type
+                        datetime.now()
+                    ))
+                    
+                    # Commit the transaction
+                    conn.commit()
+                    
+                    # Return success response with card_id
+                    return jsonify({
+                        "success": True,
+                        "message": "Business card extracted and saved successfully",
+                        "card_id": card_id,
+                        "extracted_data": extracted_data
+                    }), 200
+                    
+                except Exception as e:
+                    conn.rollback()
+                    return jsonify({"error": f"Database error: {str(e)}"}), 500
+                finally:
+                    cursor.close()
+                    conn.close()
+                    
+            except ValueError:
+                return jsonify({"error": "Invalid user_id format"}), 400
+            except Exception as e:
+                return jsonify({"error": f"Database operation failed: {str(e)}"}), 500
+        else:
+            # Return extracted data without saving to database
+            return jsonify({
+                "success": True,
+                "message": "Business card extracted successfully",
+                "extracted_data": extracted_data
+            }), 200
+                
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
