@@ -161,7 +161,7 @@ def extract_business_card():
                         clean_none_values(extracted_data.get("social_media", {}).get("facebook")),
                         clean_none_values(extracted_data.get("social_media", {}).get("instagram")),
                         clean_none_values(extracted_data.get("additional_info")),
-                        "business_card",  # card_type
+                        "business",  # card_type
                         datetime.now()
                     ))
                     
