@@ -139,16 +139,24 @@ def log_request_info(request, endpoint_name):
         for key, value in dict(request.args).items():
             logger.info(f"   {key}: {value}")
     
-    if request.is_json:
+    # Log request body - handle both JSON and non-JSON content
+    if request.data:
+        logger.info("📦 Request Body:")
         try:
+            # Try to parse as JSON first
             json_data = request.get_json(silent=True)
             if json_data:
-                logger.info("📦 Request Body:")
                 formatted_json = format_json_data(json_data, max_length=300)
                 for line in formatted_json.split('\n'):
                     logger.info(f"   {line}")
-        except Exception as e:
-            logger.debug(f"Could not parse JSON from request: {e}")
+            else:
+                # If not JSON, just print the raw data
+                raw_data = request.data.decode('utf-8', errors='ignore')[:300]
+                logger.info(f"   {raw_data}")
+        except Exception:
+            # Fallback to raw data if anything fails
+            raw_data = request.data.decode('utf-8', errors='ignore')[:300]
+            logger.info(f"   {raw_data}")
     
     log_separator(logger, "", "-", 60)
 
@@ -158,52 +166,32 @@ def log_response_info(response_data, status_code, endpoint_name):
     
     Args:
         response_data: Response data
-        status_code (int): HTTP status code
-        endpoint_name (str): Name of the endpoint
+        status_code: HTTP status code
+        endpoint_name: Name of the endpoint
     """
     logger = get_logger('response_logger')
     
-    # Determine response type and emoji
-    if status_code >= 500:
-        status_emoji = "💥"
-        status_type = "SERVER ERROR"
-        log_level = "error"
-    elif status_code >= 400:
-        status_emoji = "⚠️"
-        status_type = "CLIENT ERROR"
-        log_level = "error"
-    elif status_code >= 300:
-        status_emoji = "🔄"
-        status_type = "REDIRECT"
-        log_level = "info"
-    else:
-        status_emoji = "✅"
-        status_type = "SUCCESS"
-        log_level = "info"
+    log_separator(logger, f"OUTGOING RESPONSE: {endpoint_name.upper()}", "=", 60)
     
-    # Log response separator
-    log_separator(logger, f"RESPONSE: {endpoint_name.upper()} - {status_type}", "=", 60)
+    logger.info(f"📤 Status Code: {status_code}")
     
-    logger.info(f"{status_emoji} Status: {status_code}")
-    logger.info(f"📍 Endpoint: {endpoint_name}")
-    
-    # Log response data with proper formatting
+    # Log response body - handle both JSON and non-JSON content
     if response_data:
-        logger.info("📤 Response Data:")
-        if isinstance(response_data, (dict, list)):
-            # For large responses, use truncation
-            max_length = 800 if status_code < 400 else 400
-            formatted_json = format_json_data(response_data, max_length=max_length)
-            for line in formatted_json.split('\n'):
-                logger.info(f"   {line}")
-        else:
-            logger.info(f"   {response_data}")
-    
-    # Log final status
-    if log_level == "error":
-        logger.error(f"❌ {status_type} response from {endpoint_name}: Status {status_code}")
-    else:
-        logger.info(f"✅ {status_type} response from {endpoint_name}: Status {status_code}")
+        logger.info("📦 Response Body:")
+        try:
+            # Try to format as JSON if it's a dict
+            if isinstance(response_data, dict):
+                formatted_json = format_json_data(response_data, max_length=500)
+                for line in formatted_json.split('\n'):
+                    logger.info(f"   {line}")
+            else:
+                # If not a dict, just print the raw data
+                response_str = str(response_data)[:500]
+                logger.info(f"   {response_str}")
+        except Exception:
+            # Fallback to string representation
+            response_str = str(response_data)[:500]
+            logger.info(f"   {response_str}")
     
     log_separator(logger, "", "-", 60)
 
