@@ -111,7 +111,7 @@ def delete_restore():
     log_response_info(response_data, result[1], 'delete_or_restore')
     return result
 
-@routes_bp.route('/deleted_cards', methods=['POST'])
+@routes_bp.route('/deleted_cards', methods=['GET', 'POST'])
 def deleted_cards():
     """Get all deleted cards for a specific user (status = 1)."""
     from flask import request
@@ -137,7 +137,7 @@ def add_cat():
     log_response_info(response_data, result[1], 'add_category')
     return result
 
-@routes_bp.route('/get_categories', methods=['POST'])
+@routes_bp.route('/get_categories', methods=['GET', 'POST'])
 def get_cats():
     """Get all categories for a user with status = 0."""
     from flask import request

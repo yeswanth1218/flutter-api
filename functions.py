@@ -814,14 +814,31 @@ def delete_or_restore():
 def get_deleted_cards():
     """Get all deleted cards for a specific user (status = 1)."""
     try:
-        # Get JSON data from request
-        data = request.get_json()
+        user_id = None
         
-        # Validate required fields
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-        
-        user_id = data.get('user_id')
+        # Handle both GET and POST requests
+        if request.method == 'GET':
+            # For GET requests, try JSON body first (Flutter style), then query parameters
+            try:
+                if request.data:  # Check if there's actual data in the request body
+                    data = request.get_json(force=True, silent=True)
+                    if data and 'user_id' in data:
+                        user_id = data.get('user_id')
+            except Exception:
+                pass
+            
+            # If no user_id from JSON body, try query parameters
+            if not user_id:
+                user_id = request.args.get('user_id')
+        else:
+            # For POST requests, get user_id from JSON data
+            try:
+                data = request.get_json()
+                if data:
+                    user_id = data.get('user_id')
+            except Exception:
+                # If JSON parsing fails, try query parameters as fallback
+                user_id = request.args.get('user_id')
         
         # Check if user_id is provided
         if not user_id:
@@ -1001,14 +1018,31 @@ def add_category():
 def get_categories():
     """Get all categories for a user with status = 0."""
     try:
-        # Get JSON data from request
-        data = request.get_json()
+        user_id = None
         
-        # Validate required fields
-        if not data:
-            return jsonify({"error": "No data provided"}), 400
-        
-        user_id = data.get('user_id')
+        # Handle both GET and POST requests
+        if request.method == 'GET':
+            # For GET requests, try JSON body first (Flutter style), then query parameters
+            try:
+                if request.data:  # Check if there's actual data in the request body
+                    data = request.get_json(force=True, silent=True)
+                    if data and 'user_id' in data:
+                        user_id = data.get('user_id')
+            except Exception:
+                pass
+            
+            # If no user_id from JSON body, try query parameters
+            if not user_id:
+                user_id = request.args.get('user_id')
+        else:
+            # For POST requests, get user_id from JSON data
+            try:
+                data = request.get_json()
+                if data:
+                    user_id = data.get('user_id')
+            except Exception:
+                # If JSON parsing fails, try query parameters as fallback
+                user_id = request.args.get('user_id')
         
         # Check if user_id is provided
         if not user_id:
