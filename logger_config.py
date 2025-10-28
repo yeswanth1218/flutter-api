@@ -139,11 +139,16 @@ def log_request_info(request, endpoint_name):
         for key, value in dict(request.args).items():
             logger.info(f"   {key}: {value}")
     
-    if request.is_json and request.get_json():
-        logger.info("📦 Request Body:")
-        formatted_json = format_json_data(request.get_json(), max_length=300)
-        for line in formatted_json.split('\n'):
-            logger.info(f"   {line}")
+    if request.is_json:
+        try:
+            json_data = request.get_json(silent=True)
+            if json_data:
+                logger.info("📦 Request Body:")
+                formatted_json = format_json_data(json_data, max_length=300)
+                for line in formatted_json.split('\n'):
+                    logger.info(f"   {line}")
+        except Exception as e:
+            logger.debug(f"Could not parse JSON from request: {e}")
     
     log_separator(logger, "", "-", 60)
 

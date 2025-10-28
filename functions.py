@@ -449,28 +449,40 @@ def login_user():
 def get_user_cards(user_id):
     """Get all cards for a specific user."""
     try:
+        logger.info(f"get_user_cards called with user_id: {user_id}")
+        
         # Validate user_id format (should be UUID)
         try:
             uuid.UUID(user_id)
-        except ValueError:
+            logger.info(f"UUID validation successful for user_id: {user_id}")
+        except ValueError as e:
+            logger.error(f"UUID validation failed for user_id: {user_id}, error: {str(e)}")
             return jsonify({"error": "Invalid user_id format"}), 400
         
         # Get database connection
         conn = get_db_connection()
         if not conn:
+            logger.error("Database connection failed in get_user_cards")
             return jsonify({"error": "Database connection failed"}), 500
+        
+        logger.info("Database connection successful in get_user_cards")
         
         try:
             cursor = conn.cursor()
             
             # First, verify that the user exists
+            logger.info(f"Checking if user exists: {user_id}")
             cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
             user_exists = cursor.fetchone()
             
             if not user_exists:
+                logger.warning(f"User not found in database: {user_id}")
                 return jsonify({"error": "User not found"}), 404
             
+            logger.info(f"User exists in database: {user_id}")
+            
             # Get all active cards for the user (status = 0)
+            logger.info(f"Fetching active cards for user: {user_id}")
             cursor.execute("""
                 SELECT 
                     card_id, user_id, name, job_title, company, phone, email, 
@@ -482,6 +494,7 @@ def get_user_cards(user_id):
             """, (user_id,))
             
             cards_data = cursor.fetchall()
+            logger.info(f"Found {len(cards_data)} cards for user: {user_id}")
             
             # Format the response
             cards_list = []
@@ -510,6 +523,8 @@ def get_user_cards(user_id):
                 }
                 cards_list.append(card_dict)
             
+            logger.info(f"Successfully formatted {len(cards_list)} cards for user: {user_id}")
+            
             return jsonify({
                 "success": True,
                 "user_id": user_id,
@@ -518,12 +533,15 @@ def get_user_cards(user_id):
             }), 200
             
         except Exception as e:
+            logger.error(f"Database error in get_user_cards: {str(e)}")
             return jsonify({"error": f"Database error: {str(e)}"}), 500
         finally:
             cursor.close()
             conn.close()
+            logger.info("Database connection closed in get_user_cards")
             
     except Exception as e:
+        logger.error(f"Server error in get_user_cards: {str(e)}")
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 def update_card_details():
