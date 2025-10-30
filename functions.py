@@ -446,6 +446,94 @@ def login_user():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+def toggle_favorite():
+    """Toggle favorite status of a card (0 to 1 or 1 to 0)."""
+    logger.info("Toggle favorite function called")
+    
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        logger.debug(f"Received toggle favorite data: {data is not None}")
+        
+        # Validate required fields
+        if not data:
+            logger.warning("No data provided in toggle favorite request")
+            return jsonify({"error": "No data provided"}), 400
+            
+        card_id = data.get('card_id')
+        
+        if not card_id:
+            logger.warning("Missing card_id in toggle favorite request")
+            return jsonify({"error": "card_id is required"}), 400
+        
+        # Validate UUID format for card_id
+        try:
+            uuid.UUID(card_id)
+        except ValueError:
+            logger.error(f"Invalid card_id format: {card_id}")
+            return jsonify({"error": "Invalid card_id format"}), 400
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            logger.error("Database connection failed")
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # First, check if the card exists and get current fav status
+            cursor.execute("SELECT fav FROM cards WHERE card_id = %s", (card_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                logger.warning(f"Card not found: {card_id}")
+                return jsonify({"error": "Card not found"}), 404
+            
+            current_fav_status = result[0] if result[0] is not None else 0
+            logger.debug(f"Current favorite status for card {card_id}: {current_fav_status}")
+            
+            # Toggle the favorite status (0 to 1, 1 to 0)
+            new_fav_status = 1 if current_fav_status == 0 else 0
+            
+            # Update the favorite status
+            cursor.execute(
+                "UPDATE cards SET fav = %s WHERE card_id = %s",
+                (new_fav_status, card_id)
+            )
+            
+            if cursor.rowcount == 0:
+                logger.error(f"Failed to update favorite status for card: {card_id}")
+                return jsonify({"error": "Failed to update favorite status"}), 500
+            
+            log_database_operation("UPDATE", "cards", True)
+            
+            # Commit the transaction
+            conn.commit()
+            logger.info(f"Favorite status toggled successfully for card {card_id}: {current_fav_status} -> {new_fav_status}")
+            
+            return jsonify({
+                "success": True,
+                "message": "Favorite status updated successfully",
+                "card_id": card_id,
+                "previous_status": current_fav_status,
+                "new_status": new_fav_status
+            }), 200
+            
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Database error in toggle_favorite: {str(e)}")
+            log_database_operation("UPDATE", "cards", False, str(e))
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            logger.debug("Database connection closed in toggle_favorite")
+            
+    except Exception as e:
+        logger.error(f"Server error in toggle_favorite: {str(e)}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
 def get_user_cards(user_id):
     """Get all cards for a specific user."""
     try:

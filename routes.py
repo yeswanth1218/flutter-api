@@ -9,7 +9,8 @@ from functions import (
     delete_or_restore,
     get_deleted_cards,
     add_category,
-    get_categories
+    get_categories,
+    toggle_favorite
 )
 from logger_config import get_logger, log_request_info, log_response_info
 
@@ -148,4 +149,17 @@ def get_cats():
     # Extract the actual response data for logging
     response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
     log_response_info(response_data, result[1], 'get_categories')
+    return result
+
+@routes_bp.route('/favorites', methods=['POST'])
+def favorites():
+    """Toggle favorite status of a card."""
+    from flask import request
+    log_request_info(request, 'toggle_favorite')
+    logger.info("Toggle favorite endpoint called")
+    
+    result = toggle_favorite()
+    # Extract the actual response data for logging
+    response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
+    log_response_info(response_data, result[1], 'toggle_favorite')
     return result
