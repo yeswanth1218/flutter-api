@@ -5,6 +5,7 @@ from functions import (
     register_user,
     login_user,
     get_user_cards,
+    get_favorite_cards,
     update_card_details,
     delete_or_restore,
     get_deleted_cards,
@@ -162,4 +163,17 @@ def favorites():
     # Extract the actual response data for logging
     response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
     log_response_info(response_data, result[1], 'toggle_favorite')
+    return result
+
+@routes_bp.route('/get_favourites/<user_id>', methods=['GET'])
+def get_favourites(user_id):
+    """Get all favorite cards for a specific user."""
+    from flask import request
+    log_request_info(request, 'get_favorite_cards')
+    logger.info(f"Get favorite cards endpoint called for user_id: {user_id}")
+    
+    result = get_favorite_cards(user_id)
+    # Extract the actual response data for logging
+    response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
+    log_response_info(response_data, result[1], 'get_favorite_cards')
     return result

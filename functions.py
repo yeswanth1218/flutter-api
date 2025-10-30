@@ -447,6 +447,105 @@ def login_user():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+def get_favorite_cards(user_id):
+    """Get all favorite cards for a specific user (where fav = 1)."""
+    try:
+        logger.info(f"get_favorite_cards called with user_id: {user_id}")
+        
+        # Validate user_id format (should be UUID)
+        try:
+            uuid.UUID(user_id)
+            logger.info(f"UUID validation successful for user_id: {user_id}")
+        except ValueError as e:
+            logger.error(f"UUID validation failed for user_id: {user_id}, error: {str(e)}")
+            return jsonify({"error": "Invalid user_id format"}), 400
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            logger.error("Database connection failed in get_favorite_cards")
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        logger.info("Database connection successful in get_favorite_cards")
+        
+        try:
+            cursor = conn.cursor()
+            
+            # First, verify that the user exists
+            logger.info(f"Checking if user exists: {user_id}")
+            cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+            user_exists = cursor.fetchone()
+            
+            if not user_exists:
+                logger.warning(f"User not found in database: {user_id}")
+                return jsonify({"error": "User not found"}), 404
+            
+            logger.info(f"User exists in database: {user_id}")
+            
+            # Get all favorite cards for the user (fav = 1 and status = 0)
+            logger.info(f"Fetching favorite cards for user: {user_id}")
+            cursor.execute("""
+                SELECT 
+                    card_id, user_id, name, job_title, company, phone, email, 
+                    website, address, linkedin, twitter, facebook, instagram, 
+                    additional_info, tags, card_type, status, fav, created_at
+                FROM cards 
+                WHERE user_id = %s AND fav = 1 AND (status = 0 OR status IS NULL)
+                ORDER BY created_at DESC
+            """, (user_id,))
+            
+            cards_data = cursor.fetchall()
+            logger.info(f"Found {len(cards_data)} favorite cards for user: {user_id}")
+            
+            # Format the response
+            cards_list = []
+            for card in cards_data:
+                card_dict = {
+                    "card_id": str(card[0]),
+                    "user_id": str(card[1]),
+                    "name": card[2],
+                    "job_title": card[3],
+                    "company": card[4],
+                    "phone": card[5],
+                    "email": card[6],
+                    "website": card[7],
+                    "address": card[8],
+                    "social_media": {
+                        "linkedin": card[9],
+                        "twitter": card[10],
+                        "facebook": card[11],
+                        "instagram": card[12]
+                    },
+                    "additional_info": card[13],
+                    "tags": card[14] if card[14] else [],
+                    "card_type": card[15],
+                    "status": card[16] if card[16] is not None else 0,
+                    "fav": card[17] if card[17] is not None else 0,
+                    "created_at": card[18].isoformat() if card[18] else None
+                }
+                cards_list.append(card_dict)
+            
+            logger.info(f"Successfully formatted {len(cards_list)} favorite cards for user: {user_id}")
+            
+            return jsonify({
+                "success": True,
+                "user_id": user_id,
+                "favorite_cards": cards_list,
+                "total_favorite_cards": len(cards_list)
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Database error in get_favorite_cards: {str(e)}")
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            logger.info("Database connection closed in get_favorite_cards")
+            
+    except Exception as e:
+        logger.error(f"Server error in get_favorite_cards: {str(e)}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
 def toggle_favorite():
     """Toggle favorite status of a card (0 to 1 or 1 to 0)."""
     logger.info("Toggle favorite function called")
