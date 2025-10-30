@@ -209,7 +209,7 @@ def extract_business_card():
                         clean_none_values(extracted_data.get("social_media", {}).get("facebook")),
                         clean_none_values(extracted_data.get("social_media", {}).get("instagram")),
                         clean_none_values(extracted_data.get("additional_info")),
-                        "business",  # card_type
+                        "Business",  # card_type
                         datetime.now()
                     ))
                     
@@ -270,7 +270,7 @@ def register_user():
             logger.warning("No data provided in registration request")
             return jsonify({"error": "No data provided"}), 400
             
-        name = data.get('name')
+        name = data.get('user_name')
         phone = data.get('phone')
         password = data.get('password')
         
@@ -278,7 +278,7 @@ def register_user():
         
         if not name or not phone or not password:
             logger.warning("Missing required fields in registration")
-            return jsonify({"error": "Name, phone, and password are required"}), 400
+            return jsonify({"error": "user_name, phone, and password are required"}), 400
         
         # Basic validation
         if len(name.strip()) == 0:
@@ -947,7 +947,7 @@ def add_category():
         
         # Validate required fields
         if not data:
-            return jsonify({"error": "No data provided"}), 400
+            return jsonify({"error": "No data provided"}), 400,
         
         user_id = data.get('user_id')
         category_name = data.get('category_name')
@@ -957,10 +957,10 @@ def add_category():
             return jsonify({"error": "user_id and category_name are required"}), 400
         
         # Validate UUID format for user_id
-        try:
-            uuid.UUID(user_id)
-        except ValueError:
-            return jsonify({"error": "Invalid user_id format"}), 400
+        # try:
+        #     uuid.UUID(user_id)
+        # except ValueError:
+        #     return jsonify({"error": "Invalid user_id format"}), 400
         
         # Validate category_name (basic validation)
         if not isinstance(category_name, str) or len(category_name.strip()) == 0:
