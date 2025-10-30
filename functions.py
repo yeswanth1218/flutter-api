@@ -188,9 +188,9 @@ def extract_business_card():
                         INSERT INTO cards (
                             card_id, user_id, name, job_title, company, phone, email, 
                             website, address, linkedin, twitter, facebook, instagram, 
-                            additional_info, card_type, created_at
+                            additional_info, card_type, fav, created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                         )
                     """
                     
@@ -209,7 +209,8 @@ def extract_business_card():
                         clean_none_values(extracted_data.get("social_media", {}).get("facebook")),
                         clean_none_values(extracted_data.get("social_media", {}).get("instagram")),
                         clean_none_values(extracted_data.get("additional_info")),
-                        "Business",  # card_type
+                        "business",  # card_type
+                        0,  # fav (default value)
                         datetime.now()
                     ))
                     
@@ -575,7 +576,7 @@ def get_user_cards(user_id):
                 SELECT 
                     card_id, user_id, name, job_title, company, phone, email, 
                     website, address, linkedin, twitter, facebook, instagram, 
-                    additional_info, tags, card_type, status, created_at
+                    additional_info, tags, card_type, status, fav, created_at
                 FROM cards 
                 WHERE user_id = %s AND (status = 0 OR status IS NULL)
                 ORDER BY created_at DESC
@@ -607,7 +608,8 @@ def get_user_cards(user_id):
                     "tags": card[14] if card[14] else [],
                     "card_type": card[15],
                     "status": card[16] if card[16] is not None else 0,
-                    "created_at": card[17].isoformat() if card[17] else None
+                    "fav": card[17] if card[17] is not None else 0,
+                    "created_at": card[18].isoformat() if card[18] else None
                 }
                 cards_list.append(card_dict)
             
