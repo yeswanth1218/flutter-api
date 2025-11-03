@@ -1301,3 +1301,111 @@ def get_categories():
             
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+def forgot_password():
+    """Update user password based on mobile number."""
+    logger.info("Forgot password function called")
+    
+    try:
+        # Get JSON data from request
+        data = request.get_json()
+        logger.debug(f"Received forgot password data: {data is not None}")
+        
+        # Validate required fields
+        if not data:
+            logger.warning("No data provided in forgot password request")
+            return jsonify({"error": "No data provided"}), 400
+            
+        mobile_number = data.get('mobile_number')
+        new_password = data.get('new_password')
+        
+        logger.debug(f"Forgot password attempt for mobile: {mobile_number}")
+        
+        if not mobile_number or not new_password:
+            logger.warning("Missing mobile_number or new_password in forgot password request")
+            return jsonify({"error": "mobile_number and new_password are required"}), 400
+        
+        # Basic validation
+        if len(mobile_number.strip()) == 0:
+            logger.warning("Empty mobile_number provided in forgot password")
+            return jsonify({"error": "Mobile number cannot be empty"}), 400
+            
+        if len(new_password) < 6:
+            logger.warning(f"New password too short: {len(new_password)} characters")
+            return jsonify({"error": "New password must be at least 6 characters long"}), 400
+        
+        # Get database connection
+        conn = get_db_connection()
+        if not conn:
+            logger.error("Database connection failed in forgot password")
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Check if user exists with the given mobile number
+            cursor.execute(
+                "SELECT user_id, name FROM users WHERE phone = %s", 
+                (mobile_number.strip(),)
+            )
+            user_data = cursor.fetchone()
+            
+            if not user_data:
+                logger.warning(f"User not found with mobile number: {mobile_number}")
+                return jsonify({"error": "User not found with this mobile number"}), 404
+            
+            user_id, name = user_data
+            logger.info(f"Found user {name} (ID: {user_id}) for password reset")
+            
+            # Encode new password in base64
+            encoded_password = base64.b64encode(new_password.encode()).decode()
+            logger.debug("New password encoded successfully")
+            
+            # Update password in database
+            cursor.execute(
+                "UPDATE users SET password = %s WHERE phone = %s", 
+                (encoded_password, mobile_number.strip())
+            )
+            
+            # Check if update was successful
+            if cursor.rowcount == 0:
+                logger.error("Password update failed - no rows affected")
+                return jsonify({"error": "Password update failed"}), 500
+            
+            # Commit the transaction
+            conn.commit()
+            logger.info(f"Password updated successfully for user: {name}")
+            
+            # Log database operation
+            log_database_operation(
+                operation="UPDATE",
+                table="users",
+                details=f"Password reset for user_id: {user_id}",
+                success=True
+            )
+            
+            # Successful password update
+            return jsonify({
+                "success": True,
+                "message": "Password updated successfully"
+            }), 200
+            
+        except Exception as e:
+            logger.error(f"Database error in forgot password: {str(e)}")
+            conn.rollback()
+            log_database_operation(
+                operation="UPDATE",
+                table="users",
+                details=f"Password reset failed for mobile: {mobile_number}",
+                success=False,
+                error=str(e)
+            )
+            return jsonify({"error": f"Database error: {str(e)}"}), 500
+        finally:
+            cursor.close()
+            conn.close()
+            logger.debug("Database connection closed")
+            
+    except Exception as e:
+        logger.error(f"Server error in forgot password: {str(e)}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500

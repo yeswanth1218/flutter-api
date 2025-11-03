@@ -11,7 +11,8 @@ from functions import (
     get_deleted_cards,
     add_category,
     get_categories,
-    toggle_favorite
+    toggle_favorite,
+    forgot_password
 )
 from logger_config import get_logger, log_request_info, log_response_info
 
@@ -100,7 +101,7 @@ def update_card():
     log_response_info(response_data, result[1], 'update_card_details')
     return result
 
-@routes_bp.route('/delete_or_restore', methods=['PUT'])
+@routes_bp.route('/delete_or_restore', methods=['PUT', 'POST'])
 def delete_restore():
     """Delete, restore, or deactivate a card based on the action parameter."""
     from flask import request
@@ -176,4 +177,17 @@ def get_favourites(user_id):
     # Extract the actual response data for logging
     response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
     log_response_info(response_data, result[1], 'get_favorite_cards')
+    return result
+
+@routes_bp.route('/forgot_password', methods=['POST'])
+def forgot_password_route():
+    """Reset user password using mobile number."""
+    from flask import request
+    log_request_info(request, 'forgot_password')
+    logger.info("Forgot password endpoint called")
+    
+    result = forgot_password()
+    # Extract the actual response data for logging
+    response_data = result[0] if isinstance(result[0], dict) else result[0].get_json() if hasattr(result[0], 'get_json') else str(result[0])
+    log_response_info(response_data, result[1], 'forgot_password')
     return result
