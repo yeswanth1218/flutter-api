@@ -20,12 +20,16 @@ A Flask-based API that uses Google's Gemini AI to extract information from busin
 2. **Configure environment variables:**
    - Copy `.env.example` to `.env`
    - Get your Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-   - Add your API key to the `.env` file:
-     ```
-     GEMINI_API_KEY=your_actual_api_key_here
-     ```
+   - Set up your Supabase database parameters (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SCHEMA=smart_stack`).
+   - Add them to the `.env` file.
 
-3. **Run the application:**
+3. **Initialize the database tables:**
+   Run the migration script to create the `smart_stack` schema and all necessary tables (`users`, `cards`, `categories`):
+   ```bash
+   python init_db.py
+   ```
+
+4. **Run the application:**
    ```bash
    python app.py
    ```

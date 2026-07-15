@@ -929,7 +929,7 @@ def delete_or_restore():
             cursor.execute("""
                 SELECT column_name 
                 FROM information_schema.columns 
-                WHERE table_name = 'cards' AND column_name = 'status'
+                WHERE table_schema = current_schema AND table_name = 'cards' AND column_name = 'status'
             """)
             status_column_exists = cursor.fetchone()
             

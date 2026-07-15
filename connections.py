@@ -14,6 +14,8 @@ def get_db_connection():
     """Get PostgreSQL database connection."""
     logger.debug("Attempting to establish database connection")
     
+    schema = os.getenv('DB_SCHEMA', 'smart_stack')
+    
     try:
         connection = psycopg2.connect(
             host=os.getenv('DB_HOST'),
@@ -22,7 +24,14 @@ def get_db_connection():
             user=os.getenv('DB_USER'),
             password=os.getenv('DB_PASSWORD')
         )
-        logger.info("Database connection established successfully")
+        
+        # Configure search path to the desired schema
+        cursor = connection.cursor()
+        cursor.execute(f"SET search_path TO {schema};")
+        cursor.close()
+        connection.commit()
+        
+        logger.info(f"Database connection established successfully with search_path='{schema}'")
         return connection
     except Exception as e:
         logger.error(f"Database connection error: {e}")
